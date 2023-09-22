@@ -176,13 +176,11 @@ class Stockfish:
         command = "position fen {}".format(fen)
         self._send_command(command)
 
-        ok = False
         try:
             self.ping()
-            ok = True
         except StockfishException:
             # Stockfish crashed.
-            # Clean up the sub-process, start a new one, and return failure.
+            # Clean up the sub-process, start a new one, and report failure.
             self.wait()
             self.open()
             return StockfishStatus.Fault
@@ -225,13 +223,17 @@ class Stockfish:
         """Get an evaluation from Stockfish of the current position."""
         if self.stockfish is None:
             raise RuntimeError()
+
         arguments = []
+
         if depth is not None:
             arguments.extend(["depth", str(depth)])
+
         if movetime is not None:
             arguments.extend(["movetime", str(movetime)])
 
         command = "go {}".format(" ".join(arguments))
+
         self._send_command(command)
 
         info = None
@@ -242,9 +244,11 @@ class Stockfish:
             if line.startswith("bestmove"):
                 break
 
+        if info is None:
+            raise RuntimeError("No info lines found.")
+
         info_split = info.split()
         idx = info_split.index("score")
-
         evaluation = " ".join(info_split[idx+1:idx+3])
 
         return evaluation
@@ -254,8 +258,9 @@ def main():
 
     with contextlib.ExitStack() as exit_stack:
 
-        parser = argparse.ArgumentParser(description="Play around with stockfish.")
+        parser = argparse.ArgumentParser(description="Find interesting positions using theStockfish chess engine.")
     
+        parser.add_argument("-m", "--material", default="rnbqkbnrppppppppPPPPPPPPRNBQKBNR", help="material to place randomly on the board")
         parser.add_argument("-e", "--executable", default="stockfish,./stockfish", help="path to the Stockfish executable; may be a comma-separated list (default: stockfish,./stockfish)")
         parser.add_argument("--no-highlight", dest="highlight", action='store_false', help="do not highlight lines with small absolute centipawn value")
         parser.add_argument("--highlight-threshold", type=int, default=20, help="highlight threshold (centipawns)")
@@ -268,7 +273,7 @@ def main():
             if executable is not None:
                 break
         else:
-            print("Stockfish executable not found. Please specify its location using the --executable command line argument.")
+            print("Please specify path to the Stockfish executable using the --executable command line argument.")
             return
 
         executable = os.path.abspath(executable)
@@ -287,7 +292,7 @@ def main():
         while num_found < 1000:
 
             board.mk_empty()
-            board.place_random_pieces("rnbqkbnrppppppppPPPPPPPPRNBQKBNR")
+            board.place_random_pieces(args.material)
 
             fen_black = board.fen('b')
             status = stockfish.set_fen(fen_black)
